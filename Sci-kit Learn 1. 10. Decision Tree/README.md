@@ -1,6 +1,6 @@
 # 1. 10. 의사결정트리
 
-__의사결정트리 (Decision Trees, DTs)__는 분류와 회귀를 위해 사용하는 비모수(非母數, Non-parametric) 지도학습 방법이다. DT의 목적은, 데이터 피쳐로부터 도출된 간단한 의사결정 규칙을 학습하여 **목표 변수의 값을 예측**하는 것이다. 트리는 조각 상수 근사치(piecewise constant approximation)이라 할 수 있다.
+**의사결정트리 (Decision Trees, DTs)**는 분류와 회귀를 위해 사용하는 비모수(非母數, Non-parametric) 지도학습 방법이다. DT의 목적은, 데이터 피쳐로부터 도출된 간단한 의사결정 규칙을 학습하여 **목표 변수의 값을 예측**하는 것이다. 트리는 조각 상수 근사치(piecewise constant approximation)이라 할 수 있다.
 
 ※ piecewise constant approximation이 무슨 의미인지 잘 모르겠음
 
