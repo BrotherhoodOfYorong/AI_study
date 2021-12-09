@@ -9,6 +9,7 @@ class model:
         self.rnd_mean = kargs['rnd_mean']
         self.rnd_std = kargs['rnd_std']
         self.m_type = kargs['m_type']
+        self.adjust = False if not 'adjust' in kargs.keys() else kargs['adjust']
 
     def default_randomize(self): np.random.seed(1234)
 
@@ -16,7 +17,7 @@ class model:
 
     def load_dataset(self, chapter):
         if chapter == 1: self.data = data_loader.load_abalone_dataset(self.input_count, self.output_count)
-        if chapter == 2: self.data = data_loader.load_pulsar_dataset()
+        if chapter == 2: self.data = data_loader.load_pulsar_dataset(adjust=self.adjust)
 
     def init_model(self):
         self.weight = np.random.normal(self.rnd_mean, self.rnd_std, [self.input_count, self.output_count])
@@ -38,10 +39,12 @@ class model:
 
             if report > 0 and (epoch+1) % report == 0:
                 acc = self.run_test(test_x, test_y)
-                print('Epoch {}: loss={:5.3f}, accuracy={:5.3f}/{:5.3f}'.format(epoch+1, np.mean(losses), np.mean(accs), acc))
+                acc_str = ','.join(['%5.3f']*len(acc))%tuple(acc)
+                print('[Epoch {}] loss: {:5.3f} / results: {}'.format(epoch+1, np.mean(losses), acc_str))
         
         final_acc = self.run_test(test_x, test_y)
-        print('\nFinal Test: final accuracy = {:5.3f}'.format(final_acc))
+        final_acc_str = ','.join(['%5.3f']*len(final_acc))%tuple(final_acc)
+        print('\n[Final Test] final results: {}'.format(final_acc_str))
 
     def arrange_data(self, mb_size):
         self.shuffle_map = np.arange(self.data.shape[0])
@@ -127,10 +130,21 @@ class model:
             mdiff = np.mean(np.abs((output-y)/y))
             return 1 - mdiff
         elif self.m_type == 'binary decision':
-            estimate = np.greater(output, 0)
-            answer = np.greater(y, 0.5)
-            correct = np.equal(estimate, answer)
-            return np.mean(correct)
+            est_yes = np.greater(output, 0)
+            ans_yes = np.greater(y, 0.5)
+            est_no = np.logical_not(est_yes)
+            ans_no = np.logical_not(ans_yes)
+
+            tp = np.sum(np.logical_and(est_yes, ans_yes))
+            fp = np.sum(np.logical_and(est_yes, ans_no))
+            fn = np.sum(np.logical_and(est_no, ans_yes))
+            tn = np.sum(np.logical_and(est_no, ans_no)) # 책에 fn tn 반대로 나와있음!
+
+            accuracy = self.safe_div(tp+tn, tp+tn+fp+fn)
+            precision = self.safe_div(tp, tp+fp)
+            recall = self.safe_div(tp, tp+fn) # 책에는 fn, tn 개념이 반대로 되어있는듯
+            f1 = 2 * self.safe_div(precision*recall, precision+recall)
+            return [accuracy, precision, recall, f1]
 
     ############### Mathematical Functions ###############
     def relu(self, x):
@@ -147,3 +161,8 @@ class model:
 
     def sigmoid_cross_entropy_with_logits_derv(self, z, x):
         return -z + self.sigmoid(x)
+
+    def safe_div(self, p, q):
+        p, q = float(p), float(q)
+        if np.abs(q) < 1.0e-20: return np.sign(p)
+        return p / q
