@@ -1,6 +1,6 @@
 import numpy as np
-import csv
 import time
+import data_loader
 
 class model:
     def __init__(self, **kargs):
@@ -13,20 +13,9 @@ class model:
 
     def randomize(self): np.random.seed(time.time())
 
-    def load_abalone_dataset(self):
-        with open('./abalone.csv') as csvfile:
-            csvreader = csv.reader(csvfile)
-            next(csvreader, None)
-            rows = []
-            for row in csvreader:
-                rows.append(row)
-
-        self.data = np.zeros([len(rows), self.input_count+self.output_count])
-        for idx, row in enumerate(rows):
-            if row[0] == 'I': self.data[idx, 0] = 1
-            if row[0] == 'M': self.data[idx, 1] = 1
-            if row[0] == 'F': self.data[idx, 2] = 1
-            self.data[idx, 3:] = row[1:]
+    def load_dataset(self, chapter):
+        if chapter == 1: self.data = data_loader.load_abalone_dataset(self.input_count, self.output_count)
+        if chapter == 2: self.data = data_loader.load_pulsar_dataset()
 
     def init_model(self):
         self.weight = np.random.normal(self.rnd_mean, self.rnd_std, [self.input_count, self.output_count])
@@ -70,9 +59,9 @@ class model:
         train_data = self.data[self.shuffle_map[mb_size*idx:mb_size*(idx+1)]]
         return train_data[:, :-self.output_count], train_data[:, -self.output_count:]
 
-    def run_train(self, x, y):
+    def run_train(self, x, y, m_type='regression'):
         output, aux_nn = self.forward_neuralnet(x)
-        loss, aux_pp = self.forward_postproc(output, y)
+        loss, aux_pp = self.forward_postproc(output, y, m_type=m_type)
         accuracy = self.eval_accuracy(output, y)
 
         G_loss = 1.0
@@ -99,23 +88,38 @@ class model:
         self.weight -= learning_rate * G_w
         self.bias -= learning_rate * G_b
 
-    def forward_postproc(self, output, y):
-        diff = output - y
-        square = np.square(diff)
-        loss = np.mean(square)
-        return loss, diff
+    def forward_postproc(self, output, y, m_type='regression'):
+        if m_type='regression':
+            diff = output - y
+            square = np.square(diff)
+            loss = np.mean(square)
+            return loss, diff
+        elif m_type='binary decision':
+            entropy = sigmoid_corss_entropy_with_logits(y, output)
+            loss = np.mean(entropy)
+            return loss, [y, output, entropy]
 
-    def backprop_postproc(self, G_loss, diff):
-        shape = diff.shape
+    def backprop_postproc(self, G_loss, diff, m_type='regression'):
+        if m_type='regression':
+            shape = diff.shape
 
-        g_loss_square = np.ones(shape) / np.prod(shape)
-        g_square_diff = 2 * diff
-        g_diff_output = 1
+            g_loss_square = np.ones(shape) / np.prod(shape)
+            g_square_diff = 2 * diff
+            g_diff_output = 1
 
-        G_square = g_loss_square * G_loss
-        G_diff = g_square_diff * G_square
-        G_output = g_diff_output * G_diff
-        return G_output
+            G_square = g_loss_square * G_loss
+            G_diff = g_square_diff * G_square
+            G_output = g_diff_output * G_diff
+            return G_output
+        elif m_type='binary decision':
+            y, output, entropy = diff
+
+            g_loss_entropy = 1.0 / np.prod(entropy.shape)
+            g_entropy_output = sigmoid_cross_entropy_with_logits_derv(y, output)
+
+            G_entropy = g_loss_entropy * G_loss
+            G_output = g_entropy_output * G_entropy
+            return G_output
 
     def eval_accuracy(self, output, y):
         mdiff = np.mean(np.abs((output-y)/y))
