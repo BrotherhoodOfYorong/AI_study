@@ -8,6 +8,7 @@ class model:
         self.output_count = kargs['output_count']
         self.rnd_mean = kargs['rnd_mean']
         self.rnd_std = kargs['rnd_std']
+        self.m_type = kargs['m_type']
 
     def default_randomize(self): np.random.seed(1234)
 
@@ -59,9 +60,9 @@ class model:
         train_data = self.data[self.shuffle_map[mb_size*idx:mb_size*(idx+1)]]
         return train_data[:, :-self.output_count], train_data[:, -self.output_count:]
 
-    def run_train(self, x, y, m_type='regression'):
+    def run_train(self, x, y):
         output, aux_nn = self.forward_neuralnet(x)
-        loss, aux_pp = self.forward_postproc(output, y, m_type=m_type)
+        loss, aux_pp = self.forward_postproc(output, y)
         accuracy = self.eval_accuracy(output, y)
 
         G_loss = 1.0
@@ -88,19 +89,19 @@ class model:
         self.weight -= learning_rate * G_w
         self.bias -= learning_rate * G_b
 
-    def forward_postproc(self, output, y, m_type='regression'):
-        if m_type='regression':
+    def forward_postproc(self, output, y):
+        if self.m_type=='regression':
             diff = output - y
             square = np.square(diff)
             loss = np.mean(square)
             return loss, diff
-        elif m_type='binary decision':
-            entropy = sigmoid_corss_entropy_with_logits(y, output)
+        elif self.m_type=='binary decision':
+            entropy = self.sigmoid_corss_entropy_with_logits(y, output)
             loss = np.mean(entropy)
             return loss, [y, output, entropy]
 
-    def backprop_postproc(self, G_loss, diff, m_type='regression'):
-        if m_type='regression':
+    def backprop_postproc(self, G_loss, diff):
+        if self.m_type=='regression':
             shape = diff.shape
 
             g_loss_square = np.ones(shape) / np.prod(shape)
@@ -111,16 +112,38 @@ class model:
             G_diff = g_square_diff * G_square
             G_output = g_diff_output * G_diff
             return G_output
-        elif m_type='binary decision':
+        elif self.m_type=='binary decision':
             y, output, entropy = diff
 
             g_loss_entropy = 1.0 / np.prod(entropy.shape)
-            g_entropy_output = sigmoid_cross_entropy_with_logits_derv(y, output)
+            g_entropy_output = self.sigmoid_cross_entropy_with_logits_derv(y, output)
 
             G_entropy = g_loss_entropy * G_loss
             G_output = g_entropy_output * G_entropy
             return G_output
 
     def eval_accuracy(self, output, y):
-        mdiff = np.mean(np.abs((output-y)/y))
-        return 1 - mdiff
+        if self.m_type == 'regression':
+            mdiff = np.mean(np.abs((output-y)/y))
+            return 1 - mdiff
+        elif self.m_type == 'binary decision':
+            estimate = np.greater(output, 0)
+            answer = np.greater(y, 0.5)
+            correct = np.equal(estimate, answer)
+            return np.mean(correct)
+
+    ############### Mathematical Functions ###############
+    def relu(self, x):
+        return np.maximum(x, 0)
+
+    def sigmoid(self, x):
+        return np.exp(-self.relu(-x)) / (1.0 + np.exp(-np.abs(x)))
+
+    def sigmoid_derv(self, x, y):
+        return y * (1 - y)
+
+    def sigmoid_corss_entropy_with_logits(self, z, x):
+        return self.relu(x) - x * z + np.log(1 + np.exp(-np.abs(x)))
+
+    def sigmoid_cross_entropy_with_logits_derv(self, z, x):
+        return -z + self.sigmoid(x)

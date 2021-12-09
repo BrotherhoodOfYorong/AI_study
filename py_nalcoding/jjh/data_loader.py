@@ -18,13 +18,13 @@ def load_abalone_dataset(input_count, output_count):
 
     return data
 
-def load_pulsar_dataset(input_count, output_count):
+def load_pulsar_dataset():
     with open('./pulsar_stars.csv') as csvfile:
-        csvreader = csv.reader(csv_file)
-        next(csv_reader, None)
+        csvreader = csv.reader(csvfile)
+        next(csvreader, None)
         rows = []
 
-        for row in csv_reader: rows.append(row)
+        for row in csvreader: rows.append(row)
         data = np.asarray(rows, dtype='float32')
 
     return data
