@@ -40,11 +40,11 @@ class model:
 
             if report > 0 and (epoch+1) % report == 0:
                 acc = self.run_test(test_x, test_y)
-                acc_str = ','.join(['%5.3f']*len(acc))%tuple(acc)
-                print('[Epoch {}] loss: {:5.3f} / results: {}'.format(epoch+1, np.mean(losses), acc_str))
+                acc_str = ', '.join(['%5.3f']*len(acc))%tuple(acc) if self.m_type=='binary decision' else '{:5.3f} / {:5.3f}'.format(np.mean(accs), acc)
+                print('[Epoch {:02d}] loss: {:5.3f} | results: {}'.format(epoch+1, np.mean(losses), acc_str))
         
         final_acc = self.run_test(test_x, test_y)
-        final_acc_str = ','.join(['%5.3f']*len(final_acc))%tuple(final_acc)
+        final_acc_str = ', '.join(['%5.3f']*len(final_acc))%tuple(final_acc) if self.m_type=='binary decision' else '%5.3f'%final_acc
         print('\n[Final Test] final results: {}'.format(final_acc_str))
 
     def arrange_data(self, mb_size):
@@ -99,12 +99,10 @@ class model:
             square = np.square(diff)
             loss = np.mean(square)
             return loss, diff
-        elif self.m_type=='binary decision':
-            entropy = self.sigmoid_corss_entropy_with_logits(y, output)
-            loss = np.mean(entropy)
-            return loss, [y, output, entropy]
-        elif self.m_type=='classfication':
-            entropy = self.softmax_cross_entropy_with_logits(y, output)
+        elif self.m_type=='binary decision' or self.m_type=='classification':
+            if self.m_type=='binary decision'   : loss_function = self.sigmoid_corss_entropy_with_logits
+            if self.m_type=='classification'    : loss_function = self.softmax_cross_entropy_with_logits
+            entropy = loss_function(y, output)
             loss = np.mean(entropy)
             return loss, [y, output, entropy]
 
