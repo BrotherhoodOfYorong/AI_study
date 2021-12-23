@@ -18,6 +18,7 @@ class model:
     def load_dataset(self, chapter):
         if chapter == 1: self.data = data_loader.load_abalone_dataset(self.input_count, self.output_count)
         if chapter == 2: self.data = data_loader.load_pulsar_dataset(adjust=self.adjust)
+        if chapter == 3: self.data = data_loader.load_steel_dataset()
 
     def init_model(self):
         self.weight = np.random.normal(self.rnd_mean, self.rnd_std, [self.input_count, self.output_count])
@@ -39,11 +40,11 @@ class model:
 
             if report > 0 and (epoch+1) % report == 0:
                 acc = self.run_test(test_x, test_y)
-                acc_str = ','.join(['%5.3f']*len(acc))%tuple(acc)
-                print('[Epoch {}] loss: {:5.3f} / results: {}'.format(epoch+1, np.mean(losses), acc_str))
+                acc_str = ', '.join(['%5.3f']*len(acc))%tuple(acc) if self.m_type=='binary decision' else '{:5.3f} / {:5.3f}'.format(np.mean(accs), acc)
+                print('[Epoch {:02d}] loss: {:5.3f} | results: {}'.format(epoch+1, np.mean(losses), acc_str))
         
         final_acc = self.run_test(test_x, test_y)
-        final_acc_str = ','.join(['%5.3f']*len(final_acc))%tuple(final_acc)
+        final_acc_str = ', '.join(['%5.3f']*len(final_acc))%tuple(final_acc) if self.m_type=='binary decision' else '%5.3f'%final_acc
         print('\n[Final Test] final results: {}'.format(final_acc_str))
 
     def arrange_data(self, mb_size):
@@ -98,8 +99,10 @@ class model:
             square = np.square(diff)
             loss = np.mean(square)
             return loss, diff
-        elif self.m_type=='binary decision':
-            entropy = self.sigmoid_corss_entropy_with_logits(y, output)
+        elif self.m_type=='binary decision' or self.m_type=='classification':
+            if self.m_type=='binary decision'   : loss_function = self.sigmoid_corss_entropy_with_logits
+            if self.m_type=='classification'    : loss_function = self.softmax_cross_entropy_with_logits
+            entropy = loss_function(y, output)
             loss = np.mean(entropy)
             return loss, [y, output, entropy]
 
@@ -115,12 +118,14 @@ class model:
             G_diff = g_square_diff * G_square
             G_output = g_diff_output * G_diff
             return G_output
-        elif self.m_type=='binary decision':
+        elif self.m_type=='binary decision' or self.m_type=='classification':
             y, output, entropy = diff
 
             g_loss_entropy = 1.0 / np.prod(entropy.shape)
-            g_entropy_output = self.sigmoid_cross_entropy_with_logits_derv(y, output)
+            if self.m_type=='binary decision'   : loss_function = self.sigmoid_cross_entropy_with_logits_derv
+            if self.m_type=='classification'    : loss_function = self.softmax_cross_entropy_with_logits_derv
 
+            g_entropy_output = loss_function(y, output)
             G_entropy = g_loss_entropy * G_loss
             G_output = g_entropy_output * G_entropy
             return G_output
@@ -145,6 +150,11 @@ class model:
             recall = self.safe_div(tp, tp+fn) # 책에는 fn, tn 개념이 반대로 되어있는듯
             f1 = 2 * self.safe_div(precision*recall, precision+recall)
             return [accuracy, precision, recall, f1]
+        elif self.m_type == 'classification':
+            estimate = np.argmax(output, axis=1)
+            answer = np.argmax(y, axis=1)
+            correct = np.equal(estimate, answer)
+            return np.mean(correct)
 
     ############### Mathematical Functions ###############
     def relu(self, x):
@@ -166,3 +176,28 @@ class model:
         p, q = float(p), float(q)
         if np.abs(q) < 1.0e-20: return np.sign(p)
         return p / q
+
+    def softmax(self, x):
+        max_elemental = np.max(x, axis=1)
+        diff = (x.transpose() - max_elemental).transpose()
+        exp = np.exp(diff)
+        sum_exp = np.sum(exp, axis=1)
+        probabilities = (exp.transpose()/sum_exp).transpose()
+        return probabilities
+    
+    def softmax_derv(self, x, y):
+        mb_size, nom_size = x.shape
+        derv = np.ndarray([mb_size, nom_size, nom_size])
+        for n in range(mb_size):
+            for i in range(nom_size):
+                for j in range(nom_size):
+                    derv[n, i, j] = -y[n, i] * y[n, y]
+                derv[n, i, i] += y[n, i]
+        return derv
+
+    def softmax_cross_entropy_with_logits(self, labels, logits):
+        probabilities = self.softmax(logits)
+        return -np.sum(labels * np.log(probabilities+1.0e-10), axis=1)
+
+    def softmax_cross_entropy_with_logits_derv(self, labels, logits):
+        return self.softmax(logits) - labels

@@ -40,3 +40,14 @@ def load_pulsar_dataset(adjust=False):
         data[star_cnt:, :] = np.asarray(pulsars, dtype='float32')
 
     return data
+
+def load_steel_dataset():
+    with open('./faults.csv') as csvfile:
+        csvreader = csv.reader(csvfile)
+        next(csvreader, None)
+
+        rows = []
+        for row in csvreader:
+            rows.append(row)
+    
+    return np.asarray(rows, dtype='float32')
