@@ -10,10 +10,11 @@ class model:
         self.rnd_std = kargs['rnd_std']
         self.m_type = kargs['m_type']
         self.adjust = False if not 'adjust' in kargs.keys() else kargs['adjust']
+        self.hidden_config = kargs['hidden_config'] if 'hidden_config' in kargs.keys() else False
 
     def default_randomize(self): np.random.seed(1234)
 
-    def randomize(self): np.random.seed(time.time())
+    def randomize(self): np.random.seed(int(time.time()))
 
     def load_dataset(self, chapter):
         if chapter == 1: self.data = data_loader.load_abalone_dataset(self.input_count, self.output_count)
@@ -21,8 +22,24 @@ class model:
         if chapter == 3: self.data = data_loader.load_steel_dataset()
 
     def init_model(self):
-        self.weight = np.random.normal(self.rnd_mean, self.rnd_std, [self.input_count, self.output_count])
-        self.bias = np.zeros([self.output_count])
+        if self.hidden_config != False:
+            self.pm_hiddens = []
+            prev_count = self.input_count
+
+            for hidden_count in self.hidden_config:
+                self.pm_hiddens.append(self.alloc_param_pair([prev_count, hidden_count]))
+                prev_count = hidden_count
+            
+            self.pm_output = self.alloc_param_pair([prev_count, self.output_count])
+        else:
+            params = self.alloc_param_pair([self.input_count, self.output_count])
+            self.weight = params['w']
+            self.bias = params['b']
+
+    def alloc_param_pair(self, shape):
+        weight = np.random.normal(self.rnd_mean, self.rnd_std, shape)
+        bias = np.zeros(shape[-1])
+        return {'w':weight, 'b':bias}
 
     def train_and_test(self, epoch_count, mb_size, report, learning_rate):
         step_count = self.arrange_data(mb_size)
@@ -81,17 +98,50 @@ class model:
         return accuracy
 
     def forward_neuralnet(self, x):
-        output = np.matmul(x, self.weight) + self.bias
-        return output, x
+        if self.hidden_config != False:
+            hidden = x
+            hiddens = [x]
+            for pm_hidden in self.pm_hiddens:
+                hidden = self.relu(np.matmul(hidden, pm_hidden['w']) + pm_hidden['b'])
+                hiddens.append(hidden)
+            output = np.matmul(hidden, self.pm_output['w']) + self.pm_output['b']
+            return output, hiddens
+        else:
+            output = np.matmul(x, self.weight) + self.bias
+            return output, x
 
-    def backprop_neuralnet(self, G_output, x, learning_rate):
-        g_output_w = x.transpose()
+    def backprop_neuralnet(self, G_output, aux, learning_rate):
+        if self.hidden_config != False:
+            hiddens = aux
 
-        G_w = np.matmul(g_output_w, G_output)
-        G_b = np.sum(G_output, axis=0)
+            g_output_w_out = hiddens[-1].transpose()
+            G_w_out = np.matmul(g_output_w_out, G_output)
+            G_b_out = np.sum(G_output, axis=0)
 
-        self.weight -= learning_rate * G_w
-        self.bias -= learning_rate * G_b
+            g_output_hidden = self.pm_output['w'].transpose()
+            G_hidden = np.matmul(G_output, g_output_hidden)
+            self.pm_output['w'] -= learning_rate * G_w_out
+            self.pm_output['b'] -= learning_rate * G_b_out
+
+            for n in reversed(range(len(self.pm_hiddens))):
+                G_hidden = G_hidden * self.relu_derv(hiddens[n+1])
+                g_hidden_w_hid = hiddens[n].transpose()
+                G_w_hid = np.matmul(g_hidden_w_hid, G_hidden)
+                G_b_hid = np.sum(G_hidden, axis=0)
+
+                g_hidden_hidden = self.pm_hiddens[n]['w'].transpose()
+                G_hidden = np.matmul(G_hidden, g_hidden_hidden)
+
+                self.pm_hiddens[n]['w'] -= learning_rate * G_w_hid
+                self.pm_hiddens[n]['b'] -= learning_rate * G_b_hid
+        else:
+            g_output_w = aux.transpose()
+
+            G_w = np.matmul(g_output_w, G_output)
+            G_b = np.sum(G_output, axis=0)
+
+            self.weight -= learning_rate * G_w
+            self.bias -= learning_rate * G_b
 
     def forward_postproc(self, output, y):
         if self.m_type=='regression':
@@ -159,6 +209,9 @@ class model:
     ############### Mathematical Functions ###############
     def relu(self, x):
         return np.maximum(x, 0)
+
+    def relu_derv(self, y):
+        return np.sign(y)
 
     def sigmoid(self, x):
         return np.exp(-self.relu(-x)) / (1.0 + np.exp(-np.abs(x)))
